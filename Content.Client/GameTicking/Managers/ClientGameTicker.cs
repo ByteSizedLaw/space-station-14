@@ -22,8 +22,6 @@ namespace Content.Client.GameTicking.Managers
     {
         [Dependency] private readonly IStateManager _stateManager = default!;
         [Dependency] private readonly IEntityManager _entityManager = default!;
-        [Dependency] private readonly IConfigurationManager _configManager = default!;
-        [Dependency] private readonly SharedAudioSystem _audio = default!;
 
         [ViewVariables] private bool _initialized;
         private Dictionary<NetEntity, Dictionary<string, uint?>> _jobsAvailable = new();
@@ -45,7 +43,6 @@ namespace Content.Client.GameTicking.Managers
         [ViewVariables] public bool DisallowedLateJoin { get; private set; }
         [ViewVariables] public string? ServerInfoBlob { get; private set; }
         [ViewVariables] public TimeSpan StartTime { get; private set; }
-        [ViewVariables] public TimeSpan RoundStartTimeSpan { get; private set; }
         [ViewVariables] public new bool Paused { get; private set; }
 
         [ViewVariables] public IReadOnlyDictionary<NetEntity, Dictionary<string, uint?>> JobsAvailable => _jobsAvailable;
@@ -63,6 +60,7 @@ namespace Content.Client.GameTicking.Managers
 
             SubscribeNetworkEvent<TickerJoinLobbyEvent>(JoinLobby);
             SubscribeNetworkEvent<TickerJoinGameEvent>(JoinGame);
+            SubscribeNetworkEvent<TickerConnectionStatusEvent>(ConnectionStatus);
             SubscribeNetworkEvent<TickerLobbyStatusEvent>(LobbyStatus);
             SubscribeNetworkEvent<TickerLobbyInfoEvent>(LobbyInfo);
             SubscribeNetworkEvent<TickerLobbyCountdownEvent>(LobbyCountdown);
@@ -73,7 +71,6 @@ namespace Content.Client.GameTicking.Managers
             });
             SubscribeNetworkEvent<TickerLateJoinStatusEvent>(LateJoinStatus);
             SubscribeNetworkEvent<TickerJobsAvailableEvent>(UpdateJobsAvailable);
-            SubscribeNetworkEvent<RoundRestartCleanupEvent>(RoundRestartCleanup);
 
             _initialized = true;
         }
@@ -115,6 +112,11 @@ namespace Content.Client.GameTicking.Managers
         private void JoinLobby(TickerJoinLobbyEvent message)
         {
             _stateManager.RequestStateChange<LobbyState>();
+        }
+
+        private void ConnectionStatus(TickerConnectionStatusEvent message)
+        {
+            RoundStartTimeSpan = message.RoundStartTimeSpan;
         }
 
         private void LobbyStatus(TickerLobbyStatusEvent message)
@@ -177,23 +179,6 @@ namespace Content.Client.GameTicking.Managers
         {
             if (_backedUpRoundEndMessage != null)
                 _window = new RoundEndSummaryWindow(_backedUpRoundEndMessage.GamemodeTitle, _backedUpRoundEndMessage.RoundEndText, _backedUpRoundEndMessage.RoundDuration, _backedUpRoundEndMessage.RoundId, _backedUpRoundEndMessage.AllPlayersEndInfo, _entityManager);
-        }
-
-        private void RoundRestartCleanup(RoundRestartCleanupEvent ev)
-        {
-            if (string.IsNullOrEmpty(RestartSound))
-                return;
-
-            if (!_configManager.GetCVar(CCVars.RestartSoundsEnabled))
-            {
-                RestartSound = null;
-                return;
-            }
-
-            _audio.PlayGlobal(RestartSound, Filter.Local(), false);
-
-            // Cleanup the sound, we only want it to play when the round restarts after it ends normally.
-            RestartSound = null;
         }
     }
 }
